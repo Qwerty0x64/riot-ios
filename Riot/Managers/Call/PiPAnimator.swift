@@ -25,7 +25,7 @@ import Foundation
 class PiPAnimator: NSObject {
     
     private enum Constants {
-        static let pipViewScale: CGFloat = 0.3
+        static let pipViewSize: CGSize = CGSize(width: 90, height: 130)
     }
 
     let animationDuration: TimeInterval
@@ -52,6 +52,10 @@ class PiPAnimator: NSObject {
             return
         }
         
+        if let pipable = fromVC as? PictureInPicturable {
+            pipable.willEnterPiP?()
+        }
+        
         fromVC.willMove(toParent: nil)
         //  TODO: find a way to call this at the end of animation
         context.completeTransition(true)
@@ -62,20 +66,21 @@ class PiPAnimator: NSObject {
         pipView.delegate = pipViewDelegate
         keyWindow.addSubview(pipView)
         
-        let transform = CGAffineTransform(scaleX: Constants.pipViewScale, y: Constants.pipViewScale)
-        let targetRect = fromVC.view.bounds.applying(transform)
+        let scale = Constants.pipViewSize.width/pipView.frame.width
+        let transform = CGAffineTransform(scaleX: scale, y: scale)
+        let targetSize = Constants.pipViewSize
+        pipView.cornerRadius = pipView.cornerRadius / scale
         
         let animator = UIViewPropertyAnimator(duration: animationDuration, dampingRatio: 1) {
             pipView.transform = transform
             
             pipView.move(in: keyWindow,
-                         to: .bottomLeft,
-                         targetSize: targetRect.size)
+                         targetSize: targetSize)
         }
         
         animator.addCompletion { (position) in
             if let pipable = fromVC as? PictureInPicturable {
-                pipable.enterPiP?()
+                pipable.didEnterPiP?()
             }
             fromVC.dismiss(animated: false, completion: nil)
         }
@@ -89,8 +94,16 @@ class PiPAnimator: NSObject {
             return
         }
         
-        guard let toVC = context.viewController(forKey: .to),
-              let snapshot = toVC.view.snapshotView(afterScreenUpdates: true) else {
+        guard let toVC = context.viewController(forKey: .to) else {
+            context.completeTransition(false)
+            return
+        }
+        
+        if let pipable = toVC as? PictureInPicturable {
+            pipable.willExitPiP?()
+        }
+        
+        guard let snapshot = toVC.view.snapshotView(afterScreenUpdates: true) else {
             context.completeTransition(false)
             return
         }
@@ -117,11 +130,12 @@ class PiPAnimator: NSObject {
         animator.addCompletion { (position) in
             
             toVC.additionalSafeAreaInsets = .zero
+            toVC.view.frame = context.finalFrame(for: toVC)
             toVC.view.isHidden = false
             
             snapshot.removeFromSuperview()
             if let pipable = toVC as? PictureInPicturable {
-                pipable.exitPiP?()
+                pipable.didExitPiP?()
             }
             
             context.completeTransition(!context.transitionWasCancelled)

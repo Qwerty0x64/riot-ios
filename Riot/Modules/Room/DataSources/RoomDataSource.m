@@ -111,13 +111,13 @@ const CGFloat kTypingCellHeight = 24;
     if (![self.mxSession.store hasLoadedAllRoomMembersForRoom:self.roomId])
     {
         [self.room members:^(MXRoomMembers *roomMembers) {
-            NSLog(@"[MXKRoomDataSource] finalizeRoomDataSource: All room members have been retrieved");
+            MXLogDebug(@"[MXKRoomDataSource] finalizeRoomDataSource: All room members have been retrieved");
 
             // Refresh the full table
             [self.delegate dataSource:self didCellChange:nil];
 
         } failure:^(NSError *error) {
-            NSLog(@"[MXKRoomDataSource] finalizeRoomDataSource: Cannot retrieve all room members");
+            MXLogDebug(@"[MXKRoomDataSource] finalizeRoomDataSource: Cannot retrieve all room members");
         }];
     }
 
@@ -830,7 +830,7 @@ const CGFloat kTypingCellHeight = 24;
                                               
                                           } failure:^(NSError * _Nonnull error) {
                                               
-                                              NSLog(@"[RoomDataSource] updateKeyVerificationIfNeededForRoomBubbleCellData; keyVerificationFromKeyVerificationEvent fails with error: %@", error);
+                                              MXLogDebug(@"[RoomDataSource] updateKeyVerificationIfNeededForRoomBubbleCellData; keyVerificationFromKeyVerificationEvent fails with error: %@", error);
                                               
                                               bubbleCellData.isKeyVerificationOperationPending = NO;
                                           }];
@@ -856,7 +856,9 @@ const CGFloat kTypingCellHeight = 24;
         
         cellData.showTimestampForSelectedComponent = self.showBubbleDateTimeOnSelection;
 
-        if (cellData.collapsed && cellData.nextCollapsableCellData)
+        if (cellData.collapsed
+            && cellData.nextCollapsableCellData
+            && cellData.tag != RoomBubbleCellDataTagCall)
         {
             // Select nothing for a collased cell but open it
             [self collapseRoomBubble:cellData collapsed:NO];
@@ -885,8 +887,10 @@ const CGFloat kTypingCellHeight = 24;
           success:(void (^)(NSString *eventId))success
           failure:(void (^)(NSError *error))failure
 {
+    AVURLAsset *videoAsset = [AVURLAsset assetWithURL:videoLocalURL];
     UIImage *videoThumbnail = [MXKVideoThumbnailGenerator.shared generateThumbnailFrom:videoLocalURL];
-    [self sendVideo:videoLocalURL withThumbnail:videoThumbnail success:success failure:failure];
+    
+    [self sendVideoAsset:videoAsset withThumbnail:videoThumbnail success:success failure:failure];
 }
 
 - (void)acceptVerificationRequestForEventId:(NSString*)eventId success:(void(^)(void))success failure:(void(^)(NSError*))failure
@@ -1035,12 +1039,10 @@ const CGFloat kTypingCellHeight = 24;
 
 - (void)applyMaskToAttachmentViewOfBubbleCell:(MXKRoomBubbleTableViewCell *)cell
 {
-    if (cell.attachmentView && !cell.attachmentView.layer.mask)
+    if (cell.attachmentView)
     {
-        UIBezierPath *myClippingPath = [UIBezierPath bezierPathWithRoundedRect:cell.attachmentView.bounds cornerRadius:6];
-        CAShapeLayer *mask = [CAShapeLayer layer];
-        mask.path = myClippingPath.CGPath;
-        cell.attachmentView.layer.mask = mask;
+        cell.attachmentView.layer.cornerRadius = 6;
+        cell.attachmentView.layer.masksToBounds = YES;
     }
 }
 

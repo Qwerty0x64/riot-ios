@@ -28,7 +28,11 @@
 
 #import "IncomingCallView.h"
 
-@interface CallViewController () <PictureInPicturable, DialpadViewControllerDelegate, CallTransferMainViewControllerDelegate>
+@interface CallViewController () <
+PictureInPicturable,
+DialpadViewControllerDelegate,
+CallTransferMainViewControllerDelegate,
+CallAudioRouteMenuViewDelegate>
 {
     // Current alert (if any).
     UIAlertController *currentAlert;
@@ -37,10 +41,15 @@
     BOOL promptForStunServerFallback;
 }
 
+@property (nonatomic, weak) IBOutlet UIView *pipViewContainer;
+
 @property (nonatomic, strong) id<Theme> overriddenTheme;
 @property (nonatomic, assign) BOOL inPiP;
+@property (nonatomic, strong) CallPiPView *pipView;
 
 @property (nonatomic, strong) CustomSizedPresentationController *customSizedPresentationController;
+@property (nonatomic, strong) SlidingModalPresenter *slidingModalPresenter;
+@property (nonatomic, strong) CallAudioRouteMenuView *audioRoutesMenuView;
 
 @end
 
@@ -96,7 +105,8 @@
     
     UIImage *moreButtonImage = [UIImage imageNamed:@"call_more_icon"];
     
-    [self.moreButton setImage:moreButtonImage forState:UIControlStateNormal];
+    [self.moreButtonForVoice setImage:moreButtonImage forState:UIControlStateNormal];
+    [self.moreButtonForVideo setImage:moreButtonImage forState:UIControlStateNormal];
     
     // Hang up
     
@@ -106,6 +116,12 @@
     [self.endCallButton setTitle:nil forState:UIControlStateHighlighted];
     [self.endCallButton setImage:hangUpButtonImage forState:UIControlStateNormal];
     [self.endCallButton setImage:hangUpButtonImage forState:UIControlStateHighlighted];
+    
+    //  force orientation to portrait if phone
+    if ([UIDevice currentDevice].isPhone)
+    {
+        [[UIDevice currentDevice] setValue:[NSNumber numberWithInteger: UIInterfaceOrientationPortrait] forKey:@"orientation"];
+    }
     
     [self updateLocalPreviewLayout];
     
@@ -134,6 +150,8 @@
     self.callStatusLabel.textColor = self.overriddenTheme.baseTextPrimaryColor;
     [self.resumeButton setTitleColor:self.overriddenTheme.tintColor
                             forState:UIControlStateNormal];
+    [self.transferButton setTitleColor:self.overriddenTheme.tintColor
+                              forState:UIControlStateNormal];
     
     self.localPreviewContainerView.layer.borderColor = self.overriddenTheme.tintColor.CGColor;
     self.localPreviewContainerView.layer.borderWidth = 2;
@@ -150,6 +168,30 @@
     }
     
     [super viewWillDisappear:animated];
+}
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations
+{
+    //  limit orientation to portrait only for phone
+    if ([UIDevice currentDevice].isPhone)
+    {
+        return UIInterfaceOrientationMaskPortrait;
+    }
+    return [super supportedInterfaceOrientations];
+}
+
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation
+{
+    if ([UIDevice currentDevice].isPhone)
+    {
+        return UIInterfaceOrientationPortrait;
+    }
+    return [super preferredInterfaceOrientationForPresentation];
+}
+
+- (BOOL)shouldAutorotate
+{
+    return NO;
 }
 
 #pragma mark - override MXKViewController
@@ -187,11 +229,69 @@
     return incomingCallView;
 }
 
+- (void)showAudioDeviceOptions
+{
+    MXiOSAudioOutputRouter *router = self.mxCall.audioOutputRouter;
+    if (router.isAnyExternalDeviceConnected)
+    {
+        self.slidingModalPresenter = [SlidingModalPresenter new];
+        
+        _audioRoutesMenuView = [[CallAudioRouteMenuView alloc] initWithRoutes:router.availableOutputRoutes
+                                                                 currentRoute:router.currentRoute];
+        _audioRoutesMenuView.delegate = self;
+        
+        [self.slidingModalPresenter presentView:_audioRoutesMenuView
+                                           from:self
+                                       animated:true
+                                        options:SlidingModalPresenter.CenterInScreenOption
+                                     completion:nil];
+    }
+    else
+    {
+        //  toggle between built-in and loud speakers
+        switch (router.currentRoute.routeType)
+        {
+            case MXiOSAudioOutputRouteTypeBuiltIn:
+                [router changeCurrentRouteTo:router.loudSpeakersRoute];
+                break;
+            case MXiOSAudioOutputRouteTypeLoudSpeakers:
+                [router changeCurrentRouteTo:router.builtInRoute];
+                break;
+            default:
+                break;
+        }
+        
+    }
+}
+
+- (void)configureSpeakerButton
+{
+    switch (self.mxCall.audioOutputRouter.currentRoute.routeType)
+    {
+        case MXiOSAudioOutputRouteTypeBuiltIn:
+            [self.speakerButton setImage:[UIImage imageNamed:@"call_speaker_off_icon"]
+                                forState:UIControlStateNormal];
+            break;
+        case MXiOSAudioOutputRouteTypeLoudSpeakers:
+            [self.speakerButton setImage:[UIImage imageNamed:@"call_speaker_on_icon"]
+                                forState:UIControlStateNormal];
+            break;
+        case MXiOSAudioOutputRouteTypeExternalWired:
+        case MXiOSAudioOutputRouteTypeExternalBluetooth:
+        case MXiOSAudioOutputRouteTypeExternalCar:
+            [self.speakerButton setImage:[UIImage imageNamed:@"call_speaker_external_icon"]
+                                forState:UIControlStateNormal];
+            break;
+    }
+}
+
 #pragma mark - MXCallDelegate
 
 - (void)call:(MXCall *)call stateDidChange:(MXCallState)state reason:(MXEvent *)event
 {
     [super call:call stateDidChange:state reason:event];
+    
+    [self configurePiPView];
 
     [self checkStunServerFallbackWithCallState:state];
 }
@@ -347,16 +447,21 @@
     return _overriddenTheme;
 }
 
-- (void)setMxCall:(MXCall *)mxCall
+- (CallPiPView *)pipView
 {
-    [super setMxCall:mxCall];
-    
-    if (self.videoMuteButton.isHidden)
+    if (_pipView == nil)
     {
-        //  shift more button to left
-        self.moreButtonLeadingConstraint.constant = 8.0;
-        [self.view layoutIfNeeded];
+        _pipView = [CallPiPView instantiateWithSession:self.mainSession];
+        [_pipView updateWithTheme:self.overriddenTheme];
     }
+    return _pipView;
+}
+
+- (void)setMxCallOnHold:(MXCall *)mxCallOnHold
+{
+    [super setMxCallOnHold:mxCallOnHold];
+    
+    [self configurePiPView];
 }
 
 - (UIImage*)picturePlaceholder
@@ -385,26 +490,19 @@
 
 - (void)updatePeerInfoDisplay
 {
-    NSString *peerDisplayName;
-    NSString *peerAvatarURL;
+    [super updatePeerInfoDisplay];
     
+    NSString *peerAvatarURL;
+
     if (self.peer)
     {
-        peerDisplayName = [self.peer displayname];
-        if (!peerDisplayName.length)
-        {
-            peerDisplayName = self.peer.userId;
-        }
         peerAvatarURL = self.peer.avatarUrl;
     }
     else if (self.mxCall.isConferenceCall)
     {
-        peerDisplayName = self.mxCall.room.summary.displayname;
         peerAvatarURL = self.mxCall.room.summary.avatar;
     }
-    
-    self.callerNameLabel.text = peerDisplayName;
-    
+
     self.blurredCallerImageView.contentMode = UIViewContentModeScaleAspectFill;
     self.callerImageView.contentMode = UIViewContentModeScaleAspectFill;
     if (peerAvatarURL)
@@ -415,7 +513,7 @@
                              andImageOrientation:UIImageOrientationUp
                                     previewImage:self.picturePlaceholder
                                     mediaManager:self.mainSession.mediaManager];
-        
+
         // Retrieve the avatar in full resolution
         [self.callerImageView setImageURI:peerAvatarURL
                                  withType:nil
@@ -489,11 +587,19 @@
         self.callStatusLabel.hidden = YES;
         self.localPreviewContainerView.hidden = YES;
         self.localPreviewActivityView.hidden = YES;
+        
+        if (self.pipViewContainer.subviews.count == 0)
+        {
+            [self.pipViewContainer vc_addSubViewMatchingParent:self.pipView];
+        }
+        [self configurePiPView];
+        self.pipViewContainer.hidden = NO;
     }
     else
     {
-        self.localPreviewContainerView.hidden = NO;
-        self.callerImageView.hidden = NO;
+        self.pipViewContainer.hidden = YES;
+        self.localPreviewContainerView.hidden = !self.mxCall.isVideoCall;
+        self.callerImageView.hidden = self.mxCall.isVideoCall && self.mxCall.state == MXCallStateConnected;
         self.callerNameLabel.hidden = NO;
         self.callStatusLabel.hidden = NO;
         
@@ -521,7 +627,8 @@
                                                                showsBackspaceButton:NO
                                                                     showsCallButton:NO
                                                                   formattingEnabled:NO
-                                                                     editingEnabled:NO];
+                                                                     editingEnabled:NO
+                                                                          playTones:YES];
     DialpadViewController *controller = [DialpadViewController instantiateWithConfiguration:config];
     controller.delegate = self;
     self.customSizedPresentationController = [[CustomSizedPresentationController alloc] initWithPresentedViewController:controller presentingViewController:self];
@@ -561,7 +668,7 @@
                                duration:0
                            interToneGap:0];
     
-    NSLog(@"[CallViewController] Sending DTMF tones %@", result ? @"succeeded": @"failed");
+    MXLogDebug(@"[CallViewController] Sending DTMF tones %@", result ? @"succeeded": @"failed");
 }
 
 #pragma mark - CallTransferMainViewControllerDelegate
@@ -601,9 +708,9 @@
                                     withTransferee:transfereeUser
                                       consultFirst:consult
                                            success:^(NSString * _Nonnull newCallId){
-            NSLog(@"Call transfer succeeded with new call ID: %@", newCallId);
+            MXLogDebug(@"Call transfer succeeded with new call ID: %@", newCallId);
         } failure:^(NSError * _Nullable error) {
-            NSLog(@"Call transfer failed with error: %@", error);
+            MXLogDebug(@"Call transfer failed with error: %@", error);
             failureBlock(error);
         }];
     };
@@ -630,16 +737,42 @@
     [viewController dismissViewControllerAnimated:YES completion:nil];
 }
 
+#pragma mark - PiP
+
+- (void)configurePiPView
+{
+    if (self.inPiP)
+    {
+        [self.pipView configureWithCall:self.mxCall
+                                   peer:self.peer
+                             onHoldCall:self.mxCallOnHold
+                             onHoldPeer:self.peerOnHold];
+    }
+}
+
 #pragma mark - PictureInPicturable
 
-- (void)enterPiP
+- (void)didEnterPiP
 {
     self.inPiP = YES;
 }
 
-- (void)exitPiP
+- (void)willExitPiP
+{
+    self.pipViewContainer.hidden = YES;
+}
+
+- (void)didExitPiP
 {
     self.inPiP = NO;
+}
+
+#pragma mark - CallAudioRouteMenuViewDelegate
+
+- (void)callAudioRouteMenuView:(CallAudioRouteMenuView *)view didSelectRoute:(MXiOSAudioOutputRoute *)route
+{
+    [self.mxCall.audioOutputRouter changeCurrentRouteTo:route];
+    [self.slidingModalPresenter dismissWithAnimated:YES completion:nil];
 }
 
 @end

@@ -34,7 +34,7 @@
 
 #import "Riot-Swift.h"
 
-@interface RecentsViewController () <CreateRoomCoordinatorBridgePresenterDelegate, RoomsDirectoryCoordinatorBridgePresenterDelegate>
+@interface RecentsViewController () <CreateRoomCoordinatorBridgePresenterDelegate, RoomsDirectoryCoordinatorBridgePresenterDelegate, RoomNotificationSettingsCoordinatorBridgePresenterDelegate>
 {
     // Tell whether a recents refresh is pending (suspended during editing mode).
     BOOL isRefreshPending;
@@ -69,6 +69,12 @@
 @property (nonatomic, strong) CreateRoomCoordinatorBridgePresenter *createRoomCoordinatorBridgePresenter;
 
 @property (nonatomic, strong) RoomsDirectoryCoordinatorBridgePresenter *roomsDirectoryCoordinatorBridgePresenter;
+
+@property (nonatomic, strong) SpaceFeatureUnavailablePresenter *spaceFeatureUnavailablePresenter;
+
+@property (nonatomic, strong) CustomSizedPresentationController *customSizedPresentationController;
+
+@property (nonatomic, strong) RoomNotificationSettingsCoordinatorBridgePresenter *roomNotificationSettingsCoordinatorBridgePresenter;
 
 @end
 
@@ -467,7 +473,7 @@
         }
         
     } failure:^(NSError * _Nonnull error) {
-        NSLog(@"[RecentsViewController] Failed to join an invited room (%@)", room.roomId);
+        MXLogDebug(@"[RecentsViewController] Failed to join an invited room (%@)", room.roomId);
         [self presentRoomJoinFailedAlertForError:error completion:^{
             if (completion)
             {
@@ -489,7 +495,7 @@
             completion(YES);
         }
     } failure:^(NSError * _Nonnull error) {
-        NSLog(@"[RecentsViewController] Failed to reject an invited room (%@)", room.roomId);
+        MXLogDebug(@"[RecentsViewController] Failed to reject an invited room (%@)", room.roomId);
         [[AppDelegate theDelegate] showErrorAsAlert:error];
         
         if (completion)
@@ -870,6 +876,16 @@
     return recentsDataSource;
 }
 
+- (void)showSpaceInviteNotAvailable
+{
+    if (!self.spaceFeatureUnavailablePresenter)
+    {
+        self.spaceFeatureUnavailablePresenter = [SpaceFeatureUnavailablePresenter new];
+    }
+    
+    [self.spaceFeatureUnavailablePresenter presentUnavailableFeatureFrom:self animated:YES];
+}
+
 #pragma mark - MXKDataSourceDelegate
 
 - (Class<MXKCellRendering>)cellViewClassForCellData:(MXKCellData*)cellData
@@ -905,6 +921,13 @@
     {
         // Retrieve the invited room
         MXRoom *invitedRoom = userInfo[kInviteRecentTableViewCellRoomKey];
+                
+        if (invitedRoom.summary.roomType == MXRoomTypeSpace)
+        {
+            // Indicates that spaces are not supported
+            [self showSpaceInviteNotAvailable];
+            return;
+        }
         
         // Display the room preview
         [self dispayRoomWithRoomId:invitedRoom.roomId inMatrixSession:invitedRoom.mxSession];
@@ -913,6 +936,13 @@
     {
         // Retrieve the invited room
         MXRoom *invitedRoom = userInfo[kInviteRecentTableViewCellRoomKey];
+                
+        if (invitedRoom.summary.roomType == MXRoomTypeSpace)
+        {
+            // Indicates that spaces are not supported
+            [self showSpaceInviteNotAvailable];
+            return;
+        }
         
         // Accept invitation
         [self joinRoom:invitedRoom completion:nil];
@@ -921,7 +951,7 @@
     {
         // Retrieve the invited room
         MXRoom *invitedRoom = userInfo[kInviteRecentTableViewCellRoomKey];
-                        
+        
         [self cancelEditionMode:isRefreshPending];
         
         // Decline the invitation
@@ -1003,12 +1033,31 @@
     UIContextualAction *muteAction = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive
                                                                              title:title
                                                                            handler:^(UIContextualAction * _Nonnull action, __kindof UIView * _Nonnull sourceView, void (^ _Nonnull completionHandler)(BOOL)) {
-        [self muteEditedRoomNotifications:!isMuted];
+        
+        if ([BuildSettings roomSettingsScreenShowNotificationsV2])
+        {
+            [self changeEditedRoomNotificationSettings];
+        }
+        else
+        {
+            [self muteEditedRoomNotifications:!isMuted];
+        }
+        
+        
         completionHandler(YES);
     }];
     muteAction.backgroundColor = actionBackgroundColor;
     
-    UIImage *notificationImage = [UIImage imageNamed:@"room_action_notification"];
+    UIImage *notificationImage;
+    if([BuildSettings roomSettingsScreenShowNotificationsV2])
+    {
+        notificationImage = isMuted ? [UIImage imageNamed:@"room_action_notification_muted"] : [UIImage imageNamed:@"room_action_notification"];
+    }
+    else
+    {
+        notificationImage = [UIImage imageNamed:@"room_action_notification"];
+    }
+
     notificationImage = [notificationImage vc_tintedImageUsingColor:isMuted ? unselectedColor : selectedColor];
     muteAction.image = [notificationImage vc_notRenderedImage];
     
@@ -1145,7 +1194,7 @@
                                                                      
                                                                      // TODO GFO cancel pending uploads related to this room
                                                                      
-                                                                     NSLog(@"[RecentsViewController] Leave room (%@)", room.roomId);
+                                                                     MXLogDebug(@"[RecentsViewController] Leave room (%@)", room.roomId);
                                                                      
                                                                      [room leave:^{
                                                                          
@@ -1159,7 +1208,7 @@
                                                                          
                                                                      } failure:^(NSError *error) {
                                                                          
-                                                                         NSLog(@"[RecentsViewController] Failed to leave room");
+                                                                         MXLogDebug(@"[RecentsViewController] Failed to leave room");
                                                                          if (weakSelf)
                                                                          {
                                                                              typeof(self) self = weakSelf;
@@ -1248,7 +1297,7 @@
                     typeof(self) self = weakSelf;
                     [self stopActivityIndicator];
                     
-                    NSLog(@"[RecentsViewController] Failed to update direct tag of the room (%@)", editedRoomId);
+                    MXLogDebug(@"[RecentsViewController] Failed to update direct tag of the room (%@)", editedRoomId);
                     
                     // Notify the end user
                     NSString *userId = self.mainSession.myUser.userId; // TODO: handle multi-account
@@ -1270,6 +1319,23 @@
     }
 }
 
+- (void)changeEditedRoomNotificationSettings
+{
+    if (editedRoomId)
+    {
+        // Check whether the user didn't leave the room
+        MXRoom *room = [self.mainSession roomWithRoomId:editedRoomId];
+        if (room)
+        {
+           // navigate
+            self.roomNotificationSettingsCoordinatorBridgePresenter = [[RoomNotificationSettingsCoordinatorBridgePresenter alloc] initWithRoom:room];
+            self.roomNotificationSettingsCoordinatorBridgePresenter.delegate = self;
+            [self.roomNotificationSettingsCoordinatorBridgePresenter presentFrom:self animated:YES];
+        }
+        [self cancelEditionMode:isRefreshPending];
+    }
+}
+
 - (void)muteEditedRoomNotifications:(BOOL)mute
 {
     if (editedRoomId)
@@ -1279,27 +1345,27 @@
         if (room)
         {
             [self startActivityIndicator];
-            
+
             if (mute)
             {
                 [room mentionsOnly:^{
-                    
+
                     [self stopActivityIndicator];
-                    
+
                     // Leave editing mode
-                    [self cancelEditionMode:isRefreshPending];
-                    
+                    [self cancelEditionMode:self->isRefreshPending];
+
                 }];
             }
             else
             {
                 [room allMessages:^{
-                    
+
                     [self stopActivityIndicator];
-                    
+
                     // Leave editing mode
-                    [self cancelEditionMode:isRefreshPending];
-                    
+                    [self cancelEditionMode:self->isRefreshPending];
+
                 }];
             }
         }
@@ -1372,8 +1438,13 @@
         // Retrieve the invited room
         MXRoom* invitedRoom = cellData.roomSummary.room;
         
+        if (invitedRoom.summary.roomType == MXRoomTypeSpace)
+        {
+            // Indicates that spaces are not supported
+            [self showSpaceInviteNotAvailable];
+        }
         // Check if can show preview for the invited room 
-        if ([self canShowRoomPreviewFor:invitedRoom])
+        else if ([self canShowRoomPreviewFor:invitedRoom])
         {
             // Display the room preview
             [self dispayRoomWithRoomId:invitedRoom.roomId inMatrixSession:invitedRoom.mxSession];
@@ -1765,6 +1836,24 @@
                                                        
                                                    }]];
     
+    if (self.mainSession.callManager.supportsPSTN)
+    {
+        [currentAlert addAction:[UIAlertAction
+            actionWithTitle:NSLocalizedStringFromTable(@"room_open_dialpad", @"Vector", nil)
+                                                     style:UIAlertActionStyleDefault
+                                                   handler:^(UIAlertAction * action) {
+        
+                                                       if (weakSelf)
+                                                       {
+                                                           typeof(self) self = weakSelf;
+                                                           self->currentAlert = nil;
+            
+                                                           [self openDialpad];
+                                                       }
+        
+                                                   }]];
+    }
+
     [currentAlert addAction:[UIAlertAction actionWithTitle:[NSBundle mxk_localizedStringForKey:@"cancel"]
                                                      style:UIAlertActionStyleCancel
                                                    handler:^(UIAlertAction * action) {
@@ -1782,6 +1871,46 @@
     
     [currentAlert mxk_setAccessibilityIdentifier:@"RecentsVCCreateRoomAlert"];
     [self presentViewController:currentAlert animated:YES completion:nil];
+}
+
+- (void)openDialpad
+{
+    DialpadViewController *controller = [DialpadViewController instantiateWithConfiguration:[DialpadConfiguration default]];
+    controller.delegate = self;
+    self.customSizedPresentationController = [[CustomSizedPresentationController alloc] initWithPresentedViewController:controller presentingViewController:self];
+    self.customSizedPresentationController.dismissOnBackgroundTap = NO;
+    self.customSizedPresentationController.cornerRadius = 16;
+    
+    controller.transitioningDelegate = self.customSizedPresentationController;
+    [self presentViewController:controller animated:YES completion:nil];
+}
+
+- (void)dialpadViewControllerDidTapCall:(DialpadViewController *)viewController withPhoneNumber:(NSString *)phoneNumber
+{
+    if (self.mainSession.callManager && phoneNumber.length > 0)
+    {
+        [self startActivityIndicator];
+        
+        [viewController dismissViewControllerAnimated:YES completion:^{
+            MXWeakify(self);
+            [self.mainSession.callManager placeCallAgainst:phoneNumber withVideo:NO success:^(MXCall * _Nonnull call) {
+                MXStrongifyAndReturnIfNil(self);
+                [self stopActivityIndicator];
+                self.customSizedPresentationController = nil;
+                
+                //  do nothing extra here. UI will be handled automatically by the CallService.
+            } failure:^(NSError * _Nullable error) {
+                MXStrongifyAndReturnIfNil(self);
+                [self stopActivityIndicator];
+            }];
+        }];
+    }
+}
+
+- (void)dialpadViewControllerDidTapClose:(DialpadViewController *)viewController
+{
+    [viewController dismissViewControllerAnimated:YES completion:nil];
+    self.customSizedPresentationController = nil;
 }
 
 - (void)createNewRoom
@@ -1804,7 +1933,7 @@
 {
     if (!self.self.mainSession)
     {
-        NSLog(@"[RecentsViewController] Fail to show room directory, session is nil");
+        MXLogDebug(@"[RecentsViewController] Fail to show room directory, session is nil");
         return;
     }
     
@@ -1824,7 +1953,7 @@
 {
     if (!self.recentsDataSource)
     {
-        NSLog(@"[RecentsViewController] Fail to open public room, dataSource is not kind of class MXKRecentsDataSource");
+        MXLogDebug(@"[RecentsViewController] Fail to open public room, dataSource is not kind of class MXKRecentsDataSource");
         return;
     }
     
@@ -2080,6 +2209,59 @@
         [self createNewRoom];
     }];
     self.roomsDirectoryCoordinatorBridgePresenter = nil;
+}
+
+- (void)roomsDirectoryCoordinatorBridgePresenterDelegate:(RoomsDirectoryCoordinatorBridgePresenter *)coordinatorBridgePresenter didSelectRoomWithIdOrAlias:(NSString * _Nonnull)roomIdOrAlias
+{
+    MXRoom *room = [self.mainSession vc_roomWithIdOrAlias:roomIdOrAlias];
+    
+    if (room)
+    {
+        // Room is known show it directly
+        [coordinatorBridgePresenter dismissWithAnimated:YES completion:^{
+            [[AppDelegate theDelegate] showRoom:room.roomId andEventId:nil withMatrixSession:self.mainSession restoreInitialDisplay:NO];
+        }];
+        coordinatorBridgePresenter = nil;
+    }
+    else if ([MXTools isMatrixRoomAlias:roomIdOrAlias])
+    {
+        // Room preview doesn't support room alias
+        [[AppDelegate theDelegate] showAlertWithTitle:[NSBundle mxk_localizedStringForKey:@"error"] message:NSLocalizedStringFromTable(@"room_recents_unknown_room_error_message", @"Vector", nil)];
+    }
+    else
+    {
+        // Try to preview the room from his id
+        RoomPreviewData *roomPreviewData = [[RoomPreviewData alloc] initWithRoomId:roomIdOrAlias
+                                                                        andSession:self.mainSession];
+        
+        [self startActivityIndicator];
+
+        // Try to get more information about the room before opening its preview
+        MXWeakify(self);
+        
+        [roomPreviewData peekInRoom:^(BOOL succeeded) {
+            
+            MXStrongifyAndReturnIfNil(self);
+            
+            [self stopActivityIndicator];
+                        
+            if (succeeded) {
+                [coordinatorBridgePresenter dismissWithAnimated:YES completion:^{
+                    [[AppDelegate theDelegate].masterTabBarController showRoomPreview:roomPreviewData];
+                }];
+                self.roomsDirectoryCoordinatorBridgePresenter = nil;
+            } else {
+                [[AppDelegate theDelegate] showAlertWithTitle:[NSBundle mxk_localizedStringForKey:@"error"] message:NSLocalizedStringFromTable(@"room_recents_unknown_room_error_message", @"Vector", nil)];
+            }
+        }];
+    }
+}
+
+#pragma mark - RoomNotificationSettingsCoordinatorBridgePresenterDelegate
+-(void)roomNotificationSettingsCoordinatorBridgePresenterDelegateDidComplete:(RoomNotificationSettingsCoordinatorBridgePresenter *)coordinatorBridgePresenter
+{
+    [coordinatorBridgePresenter dismissWithAnimated:YES completion:nil];
+    self.roomNotificationSettingsCoordinatorBridgePresenter = nil;
 }
 
 @end

@@ -114,6 +114,8 @@ final class BuildSettings: NSObject {
     static let applicationCopyrightUrlString = "https://element.io/copyright"
     static let applicationPrivacyPolicyUrlString = "https://element.io/privacy"
     static let applicationTermsConditionsUrlString = "https://element.io/terms-of-service"
+    static let applicationHelpUrlString =
+    "https://element.io/help"
     
     
     // MARk: - Matrix permalinks
@@ -180,7 +182,7 @@ final class BuildSettings: NSObject {
         "https://scalar-staging.riot.im/scalar/api",
     ]
     // Jitsi server used outside integrations to create conference calls from the call button in the timeline
-    static let jitsiServerUrl = NSURL(string: "https://jitsi.riot.im")
+    static let jitsiServerUrl: URL = URL(string: "https://jitsi.riot.im")!
 
     
     // MARK: - Features
@@ -199,6 +201,8 @@ final class BuildSettings: NSObject {
     static let allowLocalContactsAccess: Bool = true
     
     static let allowInviteExernalUsers: Bool = true
+    
+    static let enableSideMenu: Bool = true
     
     // MARK: - Feature Specifics
     
@@ -242,6 +246,8 @@ final class BuildSettings: NSObject {
     static let settingsScreenShowChangePassword:Bool = true
     static let settingsScreenShowInviteFriends:Bool = true
     static let settingsScreenShowEnableStunServerFallback: Bool = true
+    static let settingsScreenShowNotificationDecodedContentOption: Bool = true
+    static let settingsScreenShowNsfwRoomsOption: Bool = true
     static let settingsSecurityScreenShowSessions:Bool = true
     static let settingsSecurityScreenShowSetupBackup:Bool = true
     static let settingsSecurityScreenShowRestoreBackup:Bool = true
@@ -268,6 +274,12 @@ final class BuildSettings: NSObject {
     static let roomScreenAllowMediaLibraryAction: Bool = true
     static let roomScreenAllowStickerAction: Bool = true
     static let roomScreenAllowFilesAction: Bool = true
+    
+    // MARK: - Room Contextual Menu
+
+    static let roomContextualMenuShowMoreOptionForMessages: Bool = true
+    static let roomContextualMenuShowMoreOptionForStates: Bool = true
+    static let roomContextualMenuShowReportContentOption: Bool = true
 
     // MARK: - Room Info Screen
     
@@ -283,6 +295,11 @@ final class BuildSettings: NSObject {
     static let roomSettingsScreenShowFlairSettings: Bool = true
     static let roomSettingsScreenShowAdvancedSettings: Bool = true
     static let roomSettingsScreenAdvancedShowEncryptToVerifiedOption: Bool = true
+    static let roomSettingsScreenShowNotificationsV2: Bool = false
+
+    // MARK: - Room Member Screen
+    
+    static let roomMemberScreenShowIgnore: Bool = true
 
     // MARK: - Message
     static let messageDetailsAllowShare: Bool = true
@@ -304,6 +321,9 @@ final class BuildSettings: NSObject {
     static let authScreenShowForgotPassword = true
     static let authScreenShowCustomServerOptions = true
     
-    // Mark: - Unified Search
+    // MARK: - Unified Search
     static let unifiedSearchScreenShowPublicDirectory = true
+    
+    // MARK: - Secrets Recovery
+    static let secretsRecoveryAllowReset = true
 }

@@ -4,8 +4,10 @@
 
 @import MatrixSDK;
 @import MatrixKit;
+@import DTCoreText;
 
 #import "WebViewViewController.h"
+#import "RiotSplitViewController.h"
 #import "RiotNavigationController.h"
 #import "ThemeService.h"
 #import "TableViewCellWithCheckBoxAndLabel.h"
@@ -32,3 +34,7 @@
 #import "CallViewController.h"
 #import "MatrixContactsDataSource.h"
 #import "TypingUserInfo.h"
+#import "UnifiedSearchViewController.h"
+#import "SettingsViewController.h"
+#import "BugReportViewController.h"
+#import "BuildInfo.h"

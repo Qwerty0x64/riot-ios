@@ -33,7 +33,6 @@ NSString *const kMXKRoomBubbleCellLongPressOnReactionView = @"kMXKRoomBubbleCell
 NSString *const kMXKRoomBubbleCellEventIdKey = @"kMXKRoomBubbleCellEventIdKey";
 NSString *const kMXKRoomBubbleCellKeyVerificationIncomingRequestAcceptPressed = @"kMXKRoomBubbleCellKeyVerificationAcceptPressed";
 NSString *const kMXKRoomBubbleCellKeyVerificationIncomingRequestDeclinePressed = @"kMXKRoomBubbleCellKeyVerificationDeclinePressed";
-NSString *const kMXKRoomBubbleCellCallBackButtonPressed = @"kMXKRoomBubbleCellCallBackButtonPressed";
 
 @implementation MXKRoomBubbleTableViewCell (Riot)
 
@@ -81,7 +80,7 @@ NSString *const kMXKRoomBubbleCellCallBackButtonPressed = @"kMXKRoomBubbleCellCa
 {
     if (!self.bubbleInfoContainer)
     {
-        NSLog(@"[MXKRoomBubbleTableViewCell+Riot] bubbleInfoContainer property is missing for cell class: %@", NSStringFromClass(self.class));
+        MXLogDebug(@"[MXKRoomBubbleTableViewCell+Riot] bubbleInfoContainer property is missing for cell class: %@", NSStringFromClass(self.class));
         return;
     }
     

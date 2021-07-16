@@ -30,6 +30,7 @@
 @protocol Configurable;
 @protocol LegacyAppDelegateDelegate;
 @class CallBar;
+@class CallPresenter;
 
 #pragma mark - Notifications
 /**
@@ -54,8 +55,8 @@ extern NSString *const AppDelegateUniversalLinkDidChangeNotification;
 @interface LegacyAppDelegate : UIResponder <
 UIApplicationDelegate,
 UISplitViewControllerDelegate,
-UINavigationControllerDelegate,
-JitsiViewControllerDelegate>
+UINavigationControllerDelegate
+>
 {
     // background sync management
     void (^_completionHandler)(UIBackgroundFetchResult);
@@ -117,6 +118,11 @@ JitsiViewControllerDelegate>
 // Build Settings
 @property (nonatomic, readonly) id<Configurable> configuration;
 
+/**
+ Call presenter instance. May be nil unless at least one session initialized.
+ */
+@property (nonatomic, strong, readonly) CallPresenter *callPresenter;
+
 + (instancetype)theDelegate;
 
 #pragma mark - Push Notifications
@@ -167,7 +173,7 @@ JitsiViewControllerDelegate>
  Log out all the accounts without confirmation.
  Show the authentication screen on successful logout.
 
- @param sendLogoutRequest Indicate whether send logout request to homeserver.
+ @param sendLogoutServerRequest Indicate whether send logout request to homeserver.
  @param completion the block to execute at the end of the operation.
  */
 - (void)logoutSendingRequestServer:(BOOL)sendLogoutServerRequest
@@ -177,7 +183,7 @@ JitsiViewControllerDelegate>
  Present incoming key verification request to accept.
 
  @param incomingKeyVerificationRequest The incoming key verification request.
- @param The matrix session.
+ @param session The matrix session.
  @return Indicate NO if the key verification screen could not be presented.
  */
 - (BOOL)presentIncomingKeyVerificationRequest:(MXKeyVerificationRequest*)incomingKeyVerificationRequest
@@ -218,6 +224,23 @@ JitsiViewControllerDelegate>
  */
 - (BOOL)handleUniversalLinkFragment:(NSString*)fragment;
 
+/**
+ Process the fragment part of a vector.im link.
+
+ @param fragment the fragment part of the universal link.
+ @param universalLinkURL the unprocessed the universal link URL (optional).
+ @return YES in case of processing success.
+ */
+- (BOOL)handleUniversalLinkFragment:(NSString*)fragment fromURL:(NSURL*)universalLinkURL;
+
+/**
+ Process the URL of a vector.im link.
+
+ @param universalLinkURL the universal link URL.
+ @return YES in case of processing success.
+ */
+- (BOOL)handleUniversalLinkURL:(NSURL*)universalLinkURL;
+
 #pragma mark - Jitsi call
 
 /**
@@ -232,14 +255,6 @@ JitsiViewControllerDelegate>
  The current Jitsi view controller being displayed.
  */
 @property (nonatomic, readonly) JitsiViewController *jitsiViewController;
-
-#pragma mark - Call status handling
-
-/**
- Call status window displayed when user goes back to app during a call.
- */
-@property (nonatomic, readonly) UIWindow* callStatusBarWindow;
-@property (nonatomic, readonly) CallBar* callBar;
 
 #pragma mark - App version management
 
@@ -262,5 +277,13 @@ JitsiViewControllerDelegate>
 
 - (void)legacyAppDelegate:(LegacyAppDelegate*)legacyAppDelegate wantsToPopToHomeViewControllerAnimated:(BOOL)animated completion:(void (^)(void))completion;
 - (void)legacyAppDelegateRestoreEmptyDetailsViewController:(LegacyAppDelegate*)legacyAppDelegate;
+
+- (void)legacyAppDelegate:(LegacyAppDelegate*)legacyAppDelegate didAddMatrixSession:(MXSession*)session;
+
+- (void)legacyAppDelegate:(LegacyAppDelegate*)legacyAppDelegate didRemoveMatrixSession:(MXSession*)session;
+
+- (void)legacyAppDelegate:(LegacyAppDelegate*)legacyAppDelegate didAddAccount:(MXKAccount*)account;
+
+- (void)legacyAppDelegate:(LegacyAppDelegate*)legacyAppDelegate didRemoveAccount:(MXKAccount*)account;
 
 @end

@@ -50,6 +50,13 @@
 
 @implementation HomeViewController
 
++ (instancetype)instantiate
+{
+    UIStoryboard *storyboard = [UIStoryboard storyboardWithName:@"Main" bundle:[NSBundle mainBundle]];
+    HomeViewController *viewController = [storyboard instantiateViewControllerWithIdentifier:@"HomeViewController"];
+    return viewController;
+}
+
 - (void)finalizeInit
 {
     [super finalizeInit];
@@ -160,7 +167,7 @@
 
 - (void)presentSecureBackupSetup
 {
-    SecureBackupSetupCoordinatorBridgePresenter *keyBackupSetupCoordinatorBridgePresenter = [[SecureBackupSetupCoordinatorBridgePresenter alloc] initWithSession:self.mainSession];
+    SecureBackupSetupCoordinatorBridgePresenter *keyBackupSetupCoordinatorBridgePresenter = [[SecureBackupSetupCoordinatorBridgePresenter alloc] initWithSession:self.mainSession allowOverwrite:NO];
     keyBackupSetupCoordinatorBridgePresenter.delegate = self;
 
     [keyBackupSetupCoordinatorBridgePresenter presentFrom:self animated:YES];
@@ -340,7 +347,16 @@
             
             tableViewCell.notificationsButton.tag = room.isMute || room.isMentionsOnly;
             [tableViewCell.notificationsButton addTarget:self action:@selector(onNotificationsButtonPressed:) forControlEvents:UIControlEventTouchUpInside];
-            tableViewCell.notificationsImageView.image = [UIImage imageNamed:@"room_action_notification"];
+            
+            if ([BuildSettings roomSettingsScreenShowNotificationsV2])
+            {
+                tableViewCell.notificationsImageView.image = tableViewCell.notificationsButton.tag ? [UIImage imageNamed:@"room_action_notification_muted"] : [UIImage imageNamed:@"room_action_notification"];
+            }
+            else
+            {
+                tableViewCell.notificationsImageView.image = [UIImage imageNamed:@"room_action_notification"];
+            }
+            
             tableViewCell.notificationsImageView.tintColor = tableViewCell.notificationsButton.tag ? unselectedColor : selectedColor;
             
             // Get the room tag (use only the first one).
@@ -656,8 +672,15 @@
         MXRoom *room = [self.mainSession roomWithRoomId:editedRoomId];
         if (room)
         {
-            UIButton *button = (UIButton*)sender;
-            [self muteEditedRoomNotifications:!button.tag];
+            if ([BuildSettings roomSettingsScreenShowNotificationsV2])
+            {
+                [self changeEditedRoomNotificationSettings];
+            }
+            else
+            {
+                UIButton *button = (UIButton*)sender;
+                [self muteEditedRoomNotifications:!button.tag];
+            }
         }
     }
 }

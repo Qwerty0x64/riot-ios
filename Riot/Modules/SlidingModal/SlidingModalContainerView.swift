@@ -17,7 +17,7 @@
 import UIKit
 import Reusable
 
-protocol SlidingModalContainerViewDelegate: class {
+protocol SlidingModalContainerViewDelegate: AnyObject {
     func slidingModalContainerViewDidTapBackground(_ view: SlidingModalContainerView)
 }
 
@@ -55,6 +55,8 @@ class SlidingModalContainerView: UIView, Themable, NibLoadable {
             }
         }
     }
+    
+    var centerInScreen: Bool = false
     
     // MARK: Outlets
     
@@ -130,7 +132,11 @@ class SlidingModalContainerView: UIView, Themable, NibLoadable {
         if UIDevice.current.userInterfaceIdiom == .pad {
             self.contentViewBottomConstraint.constant = (UIScreen.main.bounds.height + self.dismissContentViewBottomConstant) / 2
         } else {
-            self.contentViewBottomConstraint.constant = 0
+            if centerInScreen {
+                contentViewBottomConstraint.constant = (bounds.height - contentViewHeightConstraint.constant)/2
+            } else {
+                contentViewBottomConstraint.constant = 0
+            }
         }
     }
     
